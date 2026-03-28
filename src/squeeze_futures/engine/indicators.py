@@ -58,6 +58,17 @@ def calculate_futures_squeeze(df: pd.DataFrame, bb_length=14, bb_std=2.0, kc_len
     # 6. Fired 信號
     res['fired'] = (~res['sqz_on']) & (res['sqz_on'].shift(1) == True)
     
+    # 7. 新增：趨勢排列指標 (EMA 20/60)
+    res['ema_fast'] = df.ta.ema(length=20)
+    res['ema_slow'] = df.ta.ema(length=60)
+    res['bullish_align'] = res['ema_fast'] > res['ema_slow']
+    
+    # 8. 新增：近期新高與拉回判定
+    res['recent_high'] = res['Close'].rolling(window=60).max()
+    res['is_new_high'] = res['Close'] >= res['recent_high'].shift(1)
+    # 拉回區間：價格位於 EMA 20 與 EMA 60 之間，且處於多頭排列
+    res['in_pullback_zone'] = (res['Close'] <= res['ema_fast'] * 1.002) & (res['Close'] >= res['ema_slow']) & res['bullish_align']
+    
     return res
 
 def calculate_mtf_alignment(data_dict: dict[str, pd.DataFrame], weights=None) -> dict:

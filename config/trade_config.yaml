@@ -7,6 +7,8 @@ live_trading: false
 strategy:
   length: 14           # Squeeze 計算週期
   entry_score: 70      # 進場分數門檻 (已優化至 70)
+  use_squeeze: true    # 是否使用 Squeeze 爆發模式
+  use_pullback: true   # 是否使用趨勢回測模式 (EMA 排列 + 創高拉回)
   weights:             # 多週期權重 (1h, 15m, 5m)
     "1h": 0.2
     "15m": 0.4
