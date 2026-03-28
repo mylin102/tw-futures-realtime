@@ -21,6 +21,32 @@ def load_config():
     config_path = os.path.join(os.path.dirname(__file__), "..", "config", "trade_config.yaml")
     with open(config_path, 'r', encoding='utf-8') as f: return yaml.safe_load(f)
 
+def save_bar_data(row, score, regime_desc, ticker):
+    """將每一棒的指標狀態存入 CSV，以利盤後研究"""
+    log_dir = "logs/market_data"
+    os.makedirs(log_dir, exist_ok=True)
+    date_str = datetime.now().strftime("%Y%m%d")
+    file_path = f"{log_dir}/{ticker}_{date_str}_indicators.csv"
+    
+    # 整理要紀錄的欄位
+    data = {
+        "timestamp": [row.name],
+        "close": [row['Close']],
+        "vwap": [row['vwap']],
+        "score": [score],
+        "sqz_on": [row['sqz_on']],
+        "mom_state": [row['mom_state']],
+        "regime": [regime_desc],
+        "bull_align": [row['bullish_align']],
+        "bear_align": [row['bearish_align']],
+        "in_pb_zone": [row['in_bull_pb_zone'] or row['in_bear_pb_zone']]
+    }
+    df = pd.DataFrame(data)
+    
+    # 若檔案不存在則寫入 Header
+    header = not os.path.exists(file_path)
+    df.to_csv(file_path, mode='a', index=False, header=header)
+
 def check_funds_for_live(shioaji, lots, min_margin_per_lot=25000):
     available = shioaji.get_available_margin()
     required = lots * min_margin_per_lot
@@ -42,8 +68,8 @@ def get_market_status():
 def run_simulation(ticker="TMF"):
     cfg = load_config()
     LIVE_TRADING, STRATEGY, MGMT, RISK = cfg['live_trading'], cfg['strategy'], cfg['trade_mgmt'], cfg['risk_mgmt']
-    PB = STRATEGY.get('pullback', {})
-    SCALE = STRATEGY.get('scale_in', {'enabled': False})
+    PB, TP = STRATEGY.get('pullback', {}), STRATEGY.get('partial_exit', {})
+    FILTER_MODE = STRATEGY.get('regime_filter', 'mid')
 
     trader = PaperTrader(ticker=ticker)
     shioaji = ShioajiClient()
@@ -52,8 +78,9 @@ def run_simulation(ticker="TMF"):
     
     console.print(f"🚀 Squeeze Trader Started - Mode: {'LIVE' if LIVE_TRADING else 'PAPER'}")
     
-    # 紀錄單次趨勢是否已加碼
-    has_scaled_in = False
+    # 狀態紀錄
+    has_tp1_hit = False
+    last_processed_bar = None
 
     try:
         while True:
@@ -62,7 +89,7 @@ def run_simulation(ticker="TMF"):
                 if trader.position != 0: trader.execute_signal("EXIT", trader.entry_price, datetime.now())
                 time.sleep(300); continue
 
-            # 1. 抓取數據
+            # 1. 抓取數據與計算指標
             processed_data = {}
             for tf in ["5m", "15m", "1h"]:
                 df = shioaji.get_kline(ticker, interval=tf)
@@ -70,36 +97,47 @@ def run_simulation(ticker="TMF"):
                 if not df.empty:
                     processed_data[tf] = calculate_futures_squeeze(df, bb_length=STRATEGY["length"], **PB)
             
-            if "5m" not in processed_data: continue
-            df_5m = processed_data["5m"]
-            last_5m = df_5m.iloc[-1]
-            alignment = calculate_mtf_alignment(processed_data, weights=STRATEGY["weights"])
-            score, last_price, vwap = alignment['score'], last_5m['Close'], last_5m['vwap']
+            if "5m" not in processed_data or "15m" not in processed_data: continue
+            df_5m, df_15m = processed_data["5m"], processed_data["15m"]
+            last_5m, last_15m = df_5m.iloc[-1], df_15m.iloc[-1]
+            
+            score = calculate_mtf_alignment(processed_data, weights=STRATEGY["weights"])['score']
+            last_price, vwap = last_5m['Close'], last_5m['vwap']
             timestamp = last_5m.name
             
+            # --- 🚀 自動紀錄數據 (當新棒出現時) ---
+            if last_processed_bar != timestamp:
+                regime_desc = "NORMAL"
+                if last_5m['opening_bullish']: regime_desc = "STRONG"
+                elif last_5m['opening_bearish']: regime_desc = "WEAK"
+                save_bar_data(last_5m, score, regime_desc, ticker)
+                last_processed_bar = timestamp
+
+            # --- 環境與過濾 ---
+            can_long, can_short = True, True
+            if FILTER_MODE == "mid":
+                mid_trend = "BULL" if last_15m['Close'] > last_15m['ema_filter'] else "BEAR"
+                is_sideways = abs(last_15m['Close'] - last_15m['ema_filter']) / last_15m['ema_filter'] < 0.003
+                can_long, can_short = (mid_trend == "BULL" or is_sideways), (mid_trend == "BEAR" or is_sideways)
+            
+            if last_5m['opening_bullish']: can_short = False
+            if last_5m['opening_bearish']: can_long = False
+
             log_msg, real_action = "", None
             
-            # --- 2. 風控與加碼監控 ---
+            # --- 2. 風控與分批平倉 ---
             if trader.position != 0:
                 trader.update_trailing_stop(last_price)
                 
-                # 🚀 獲利加碼邏輯 (Scale-in)
-                if SCALE['enabled'] and abs(trader.position) == 1 and not has_scaled_in:
+                # 分批停利 (TP1)
+                if TP['enabled'] and abs(trader.position) == MGMT['lots_per_trade'] and not has_tp1_hit:
                     pnl_pts = (last_price - trader.entry_price) * (1 if trader.position > 0 else -1)
-                    if pnl_pts >= SCALE['profit_trigger']:
-                        # 確認趨勢方向仍正確
-                        still_strong = (trader.position > 0 and score > 50) or (trader.position < 0 and score < -50)
-                        if still_strong:
-                            lots_to_add = MGMT["lots_per_trade"]
-                            if not LIVE_TRADING or check_funds_for_live(shioaji, lots_to_add):
-                                action = "BUY" if trader.position > 0 else "SELL"
-                                msg = trader.execute_signal(action, last_price, timestamp, lots=lots_to_add, max_lots=SCALE['max_lots'])
-                                if msg:
-                                    log_msg = "[SCALE-IN] " + msg; real_action = action.capitalize()
-                                    has_scaled_in = True
-                                    # 加碼後自動將停損移至最初進場價 (Break-even for full position)
-                                    trader.current_stop_loss = trader.entry_price
-                
+                    if pnl_pts >= TP['tp1_pts']:
+                        msg = trader.execute_signal("PARTIAL_EXIT", last_price, timestamp, lots=TP['tp1_lots'])
+                        if msg:
+                            log_msg = "[TP1 HIT] " + msg; real_action = "Sell" if trader.position > 0 else "Buy"
+                            has_tp1_hit = True; trader.current_stop_loss = trader.entry_price
+
                 # 檢查停損
                 stop_msg = trader.check_stop_loss(last_price, timestamp)
                 if not stop_msg and RISK["exit_on_vwap"]:
@@ -107,19 +145,15 @@ def run_simulation(ticker="TMF"):
                        (trader.position < 0 and last_price > vwap and not last_5m['opening_bearish']):
                         stop_msg = trader.execute_signal("EXIT", last_price, timestamp); stop_msg = "[VWAP] " + stop_msg
                 
-                if stop_msg: log_msg, real_action = stop_msg, ("Sell" if trader.position > 0 else "Buy"); has_scaled_in = False
+                if stop_msg: log_msg, real_action = stop_msg, ("Sell" if trader.position > 0 else "Buy"); has_tp1_hit = False
 
             # --- 3. 進場邏輯 ---
             if not log_msg and trader.position == 0:
-                has_scaled_in = False # 重設加碼旗標
+                has_tp1_hit = False
                 sqz_buy = (not last_5m['sqz_on']) and score >= STRATEGY["entry_score"] and last_price > vwap and last_5m['mom_state'] == 3
                 pb_buy = df_5m['is_new_high'].tail(12).any() and last_5m['in_bull_pb_zone'] and last_price > last_5m['Open']
                 sqz_sell = (not last_5m['sqz_on']) and score <= -STRATEGY["entry_score"] and last_price < vwap and last_5m['mom_state'] == 0
                 pb_sell = df_5m['is_new_low'].tail(12).any() and last_5m['in_bear_pb_zone'] and last_price < last_5m['Open']
-
-                # 環境過濾
-                can_long = (last_5m['Close'] > processed_data['15m'].iloc[-1]['ema_filter'] or last_5m['opening_bullish'])
-                can_short = (last_5m['Close'] < processed_data['15m'].iloc[-1]['ema_filter'] or last_5m['opening_bearish'])
 
                 if (sqz_buy or pb_buy) and can_long and MGMT["allow_long"]:
                     if not LIVE_TRADING or check_funds_for_live(shioaji, MGMT["lots_per_trade"]):
@@ -132,11 +166,9 @@ def run_simulation(ticker="TMF"):
 
             if log_msg:
                 console.print(f"[bold yellow][{timestamp}] {log_msg}[/bold yellow]")
-                if LIVE_TRADING and real_action and contract: shioaji.place_order(contract, real_action, MGMT["lots_per_trade"])
+                if LIVE_TRADING and real_action and contract: shioaji.place_order(contract, real_action, 1 if "PARTIAL" in log_msg else MGMT["lots_per_trade"])
                 send_email_notification(f"TRADE ALERT: {ticker}", log_msg, f"<h3>{log_msg}</h3>")
             
-            sl_info = f"SL:{trader.current_stop_loss:.0f}" if trader.current_stop_loss else "None"
-            console.print(f"[{datetime.now().strftime('%H:%M:%S')}] Price: {last_price:.1f} | Score: {score:.1f} | Pos: {trader.position} ({sl_info})", end="\r")
             time.sleep(30)
 
     except KeyboardInterrupt: pass
