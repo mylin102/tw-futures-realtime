@@ -118,18 +118,28 @@ def run_simulation(ticker="MXFR1"):
             if log_msg:
                 console.print(f"[bold yellow][{timestamp}] {log_msg}[/bold yellow]")
                 
-                # --- 新增：即時成交 Email 通知 ---
-                subject = f"TRADE ALERT: {ticker} - {log_msg.split(' ')[0]}"
-                body = f"""
-Squeeze Strategy Real-time Alert
---------------------------------
-Event: {log_msg}
-Time: {timestamp}
-Price: {current_price}
-MTF Score: {score:.1f}
-Current Pos: {"LONG" if trader.position == 1 else "SHORT" if trader.position == -1 else "EMPTY"}
-"""
-                send_email_notification(subject, body)
+                # --- 美化後的即時成交 Email 通知 ---
+                action_type = log_msg.split(' ')[0] # BUY, SELL, Exit
+                color = "#28a745" if "BUY" in log_msg else "#dc3545" if "SELL" in log_msg else "#007bff"
+                bg_color = "#e9f7ef" if "BUY" in log_msg else "#f8d7da" if "SELL" in log_msg else "#e7f3ff"
+                
+                subject = f"TRADE ALERT: {ticker} - {action_type}"
+                body_html = f"""
+                <html>
+                <body style="font-family: sans-serif;">
+                    <div style="border-left: 10px solid {color}; background: {bg_color}; padding: 20px; border-radius: 5px;">
+                        <h2 style="color: {color}; margin-top: 0;">Trade Executed: {log_msg}</h2>
+                        <p style="font-size: 18px;"><strong>Ticker:</strong> {ticker}</p>
+                        <p style="font-size: 24px; color: #333;"><strong>Price:</strong> {current_price:,.1f}</p>
+                        <hr style="border: 0; border-top: 1px solid #ddd;">
+                        <p><strong>MTF Score:</strong> {score:.1f}</p>
+                        <p><strong>Time:</strong> {timestamp}</p>
+                        <p><strong>Current Pos:</strong> {"LONG" if trader.position == 1 else "SHORT" if trader.position == -1 else "EMPTY"}</p>
+                    </div>
+                </body>
+                </html>
+                """
+                send_email_notification(subject, log_msg, body_html)
                 # ------------------------------
             
             # 顯示進度
