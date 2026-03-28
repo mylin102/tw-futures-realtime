@@ -14,6 +14,7 @@ from squeeze_futures.data.downloader import download_futures_data
 from squeeze_futures.data.shioaji_client import ShioajiClient
 from squeeze_futures.engine.indicators import calculate_futures_squeeze, calculate_mtf_alignment
 from squeeze_futures.engine.simulator import PaperTrader
+from squeeze_futures.report.notifier import send_email_notification
 
 console = Console()
 
@@ -125,9 +126,18 @@ def run_simulation(ticker="MXFR1"):
             time.sleep(30 if use_shioaji else 60)
 
     except KeyboardInterrupt:
-        console.print("\n[bold red]Simulation ended by user. Generating report...[/bold red]")
+        console.print("\n[bold red]Simulation ended by user.[/bold red]")
+    finally:
+        report_content = trader.get_performance_report()
         report_path = trader.save_report()
         console.print(f"[bold green]Report saved to: {report_path}[/bold green]")
+        
+        # 發送 Email
+        subject = f"Squeeze Simulation Results - {datetime.now().strftime('%Y-%m-%d')}"
+        if send_email_notification(subject, report_content):
+            console.print("[bold cyan]Email notification sent![/bold cyan]")
+        else:
+            console.print("[bold red]Failed to send Email notification.[/bold red]")
 
 if __name__ == "__main__":
     # 使用 ^TWII 代替 MXFR1 進行週末測試 (yfinance 備案)
