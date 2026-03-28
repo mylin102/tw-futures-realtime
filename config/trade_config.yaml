@@ -5,7 +5,7 @@ live_trading: false
 
 # 1. 策略核心參數 (已優化至最佳 20/70 組合)
 strategy:
-  length: 20           # Squeeze 計算週期 (優化後)
+  length: 20           # Squeeze 計算週期
   entry_score: 70      # 進場分數門檻
   
   # 模式開關
@@ -32,10 +32,10 @@ trade_mgmt:
   max_positions: 3
   allow_long: true
   allow_short: true
-  force_close_at_end: true
+  force_close_at_end: false # 🚀 設為 false 以允許留倉 (獲利期望值更高)
 
-# 3. 風險控管 (已優化至 30 點 SL)
+# 3. 風險控管
 risk_mgmt:
-  stop_loss_pts: 30    # 硬性停損 (優化後)
-  break_even_pts: 30   # 保本門檻 (優化後)
+  stop_loss_pts: 30
+  break_even_pts: 30
   exit_on_vwap: true
