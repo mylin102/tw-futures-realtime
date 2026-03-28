@@ -1,43 +1,37 @@
-# 🚀 Squeeze Taiwan Futures Auto-Trader Configuration
+# 🚀 Squeeze Taiwan Futures (TMF) Configuration
 
-# 實戰總開關
+# 模式切換：V1 (當沖狙擊), V2 (波段狙擊)
+active_mode: "V1" 
+
 live_trading: false
 
 # 1. 策略核心參數
 strategy:
   length: 20
-  entry_score: 70
-  use_squeeze: true
-  use_pullback: true
-  regime_filter: "mid"
-  
-  pullback:
-    ema_fast: 20
-    ema_slow: 60
-    lookback: 60
-    buffer: 1.002
+  entry_score: 70      # 期貨維持 70 即可，因為損耗較小
+  regime_filter: "mid" 
+  use_opening_logic: true
+  weights: {"1h": 0.2, "15m": 0.4, "5m": 0.4}
 
-  # 🚀 新增：分批停利策略 (Partial Exit)
-  partial_exit:
-    enabled: true      # 是否啟動分批停利
-    tp1_pts: 40        # 第一階段停利點數 (40 點)
-    tp1_lots: 1        # 第一階段平倉口數
+# 2. 🚀 下單執行保護 (同步自選擇權系統)
+execution:
+  order_type: "Limit"
+  aggressive_ticks: 1      # 期貨跳動較細，掛 1 Tick 即可
+  passive_tp_ticks: 0      # 停利用被動限價
+  max_spread_pts: 2.0      # 價差超過 2 點不進場 (TMF 流動性保護)
 
-  weights:
-    "1h": 0.2
-    "15m": 0.4
-    "5m": 0.4
+# 3. 🚀 出場優化 (The Exit Sniper)
+exit_optimization:
+  eod_trap_enabled: true
+  eod_trap_ticks: 2        # 收盤前掛高 2 點誘捕
+  eod_panic_time: "13:30"  # 最後清倉時間
 
-# 2. 部位管理
-trade_mgmt:
-  lots_per_trade: 2    # 進場直接 2 口
-  max_positions: 2
-  allow_long: true
-  allow_short: true
-  force_close_at_end: false
+# 4. 模式設定
+modes:
+  V1: {holding_mode: "daytrade", force_close_at_end: true}
+  V2: {holding_mode: "swing", force_close_at_end: false}
 
-# 3. 風險控管
+# 5. 風險控管
 risk_mgmt:
   stop_loss_pts: 30
-  break_even_pts: 30
-  exit_on_vwap: true
+  lots_per_trade: 2
