@@ -10,16 +10,13 @@ except ImportError:
     sj = None
 
 load_dotenv()
-
 logger = logging.getLogger(__name__)
 
 class ShioajiClient:
     def __init__(self):
         self.api = None
         self.is_logged_in = False
-        if sj is None:
-            logger.error("shioaji package not installed.")
-            return
+        if sj is None: return
         self.api = sj.Shioaji()
 
     def login(self):
@@ -27,21 +24,30 @@ class ShioajiClient:
         secret_key = os.getenv("SHIOAJI_SECRET_KEY")
         cert_path = os.getenv("SHIOAJI_CERT_PATH")
         cert_password = os.getenv("SHIOAJI_CERT_PASSWORD")
-
-        if not all([api_key, secret_key]):
-            logger.warning("Shioaji API credentials missing in .env")
-            return False
-
+        if not all([api_key, secret_key]): return False
         try:
             self.api.login(api_key=api_key, secret_key=secret_key, fetch_contract=True)
             if cert_path and os.path.exists(cert_path):
                 self.api.activate_ca(ca_path=cert_path, ca_passwd=cert_password, person_id=api_key)
-                logger.info(f"Shioaji CA activated.")
             self.is_logged_in = True
             return True
         except Exception as e:
-            logger.error(f"Shioaji login failed: {str(e)}")
+            logger.error(f"Shioaji login failed: {e}")
             return False
+
+    def get_available_margin(self):
+        """查詢期貨帳戶可用保證金 (TWD)"""
+        if not self.is_logged_in: return 0
+        try:
+            # 取得所有帳戶的權益數
+            margins = self.api.get_account_margin()
+            # 這裡簡單取第一個期貨帳戶的可用餘額 (Available Margin)
+            if margins:
+                return float(margins[0].available_margin)
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to fetch margin: {e}")
+            return 0
 
     def get_futures_contract(self, ticker: str):
         if not self.is_logged_in: return None
@@ -55,30 +61,15 @@ class ShioajiClient:
         except Exception: return None
 
     def place_order(self, contract, action: str, quantity: int, price: float = 0):
-        """
-        執行真實下單。
-        action: 'Buy' or 'Sell'
-        quantity: 口數
-        price: 0 代表市價單 (Market Order), 否則為限價單
-        """
-        if not self.is_logged_in: 
-            logger.error("Not logged in. Cannot place order.")
-            return None
-
+        if not self.is_logged_in: return None
         try:
-            # 建立委託單 (預設使用自動市價/當沖屬性)
             order = self.api.Order(
-                action=action,
-                price=price,
-                quantity=quantity,
-                order_type=sj.constant.OrderType.MTL, # 市價剩餘轉限價，適合期貨
+                action=action, price=price, quantity=quantity,
+                order_type=sj.constant.OrderType.MTL,
                 price_type=sj.constant.StockPriceType.MKT if price == 0 else sj.constant.StockPriceType.LMT,
                 market_type=sj.constant.FuturesMarketType.Night if datetime.now().hour >= 15 or datetime.now().hour < 5 else sj.constant.FuturesMarketType.Common
             )
-            
-            # 送出委託
             trade = self.api.place_order(contract, order)
-            logger.info(f"REAL ORDER PLACED: {action} {quantity} {contract.symbol}")
             return trade
         except Exception as e:
             logger.error(f"Order placement failed: {e}")
