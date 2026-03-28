@@ -3,6 +3,8 @@ pyproject.toml
 src/squeeze_futures/data/downloader.py
 src/squeeze_futures/data/shioaji_client.py
 src/squeeze_futures/engine/indicators.py
+src/squeeze_futures/engine/simulator.py
+src/squeeze_futures/report/notifier.py
 src/squeeze_tw_futures_realtime.egg-info/PKG-INFO
 src/squeeze_tw_futures_realtime.egg-info/SOURCES.txt
 src/squeeze_tw_futures_realtime.egg-info/dependency_links.txt

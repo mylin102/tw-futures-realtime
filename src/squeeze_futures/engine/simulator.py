@@ -12,25 +12,32 @@ class PaperTrader:
         self.trades = []
         self.fee_per_side = 20 # 預估手續費+稅
 
-    def execute_signal(self, signal: str, price: float, timestamp: datetime):
+    def execute_signal(self, signal: str, price: float, timestamp: datetime, stop_loss=None, break_even_trigger=None):
         """
         執行信號：'BUY', 'SELL', 'EXIT'
+        stop_loss: 初始停損點數
+        break_even_trigger: 獲利達此點數後，停損移至成本價
         """
         if signal == "BUY" and self.position == 0:
             self.position = 1
             self.entry_price = price
             self.entry_time = timestamp
-            return f"Entry LONG at {price}"
+            self.current_stop_loss = price - stop_loss if stop_loss else None
+            self.be_triggered = False
+            self.be_points = break_even_trigger
+            return f"Entry LONG at {price} (SL: {self.current_stop_loss})"
             
         elif signal == "SELL" and self.position == 0:
             self.position = -1
             self.entry_price = price
             self.entry_time = timestamp
-            return f"Entry SHORT at {price}"
+            self.current_stop_loss = price + stop_loss if stop_loss else None
+            self.be_triggered = False
+            self.be_points = break_even_trigger
+            return f"Entry SHORT at {price} (SL: {self.current_stop_loss})"
             
         elif signal == "EXIT" and self.position != 0:
             pnl_points = (price - self.entry_price) * self.position
-            # 微台指 1 點 = 10 元
             pnl_cash = pnl_points * 10 - (self.fee_per_side * 2)
             
             trade_record = {
@@ -46,9 +53,30 @@ class PaperTrader:
             self.trades.append(trade_record)
             self.balance += pnl_cash
             self.position = 0
-            self.entry_price = 0
+            self.current_stop_loss = None
             return f"Exit at {price}, PnL: {pnl_cash:.0f}"
             
+        return None
+
+    def update_trailing_stop(self, current_price: float):
+        """實作保本停損邏輯"""
+        if self.position == 0 or not self.be_points or self.be_triggered:
+            return
+            
+        pnl = (current_price - self.entry_price) * self.position
+        if pnl >= self.be_points:
+            # 獲利達標，移至保本點 (稍微加一點點手續費補償)
+            self.current_stop_loss = self.entry_price + (2 * self.position)
+            self.be_triggered = True
+            return True
+        return False
+
+    def check_stop_loss(self, current_price: float, timestamp: datetime):
+        """檢查是否觸發停損 (初始停損或保本停損)"""
+        if self.position == 1 and self.current_stop_loss and current_price <= self.current_stop_loss:
+            return self.execute_signal("EXIT", self.current_stop_loss, timestamp)
+        elif self.position == -1 and self.current_stop_loss and current_price >= self.current_stop_loss:
+            return self.execute_signal("EXIT", self.current_stop_loss, timestamp)
         return None
 
     def get_performance_report(self):
