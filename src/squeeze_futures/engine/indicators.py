@@ -2,7 +2,36 @@ import pandas as pd
 import numpy as np
 import pandas_ta as ta
 
-def calculate_futures_squeeze(df: pd.DataFrame, bb_length=14, bb_std=2.0, kc_length=14, kc_scalar=1.5, 
+def calculate_atr(df: pd.DataFrame, length: int = 14) -> pd.Series:
+    """
+    計算 ATR (Average True Range)
+    
+    Args:
+        df: 包含 High, Low, Close 的 DataFrame
+        length: ATR 計算週期，預設 14
+    
+    Returns:
+        ATR Series
+    """
+    if df.empty or len(df) < length:
+        return pd.Series(index=df.index, dtype=float)
+    
+    high = df['High']
+    low = df['Low']
+    close_prev = df['Close'].shift(1)
+    
+    # 計算 True Range
+    tr1 = high - low
+    tr2 = abs(high - close_prev)
+    tr3 = abs(low - close_prev)
+    
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=length).mean()
+    
+    return atr
+
+
+def calculate_futures_squeeze(df: pd.DataFrame, bb_length=14, bb_std=2.0, kc_length=14, kc_scalar=1.5,
                              ema_fast=20, ema_slow=60, lookback=60, pb_buffer=1.002, ema_macro=200) -> pd.DataFrame:
     """
     包含 Squeeze、雙向回測、環境過濾及開盤法判定的指標計算。

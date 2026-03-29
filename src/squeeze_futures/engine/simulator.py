@@ -1,7 +1,64 @@
 import pandas as pd
 from datetime import datetime
 import os
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
+
+
+def calculate_ma_stop_price(
+    df: pd.DataFrame,
+    position: int,
+    ma_type: str = "below",
+    ma_length: int = 60,
+    ma_ticks: int = 5,
+    ma_multiplier: float = 1.0,
+    use_prev_ma: bool = True,
+    entry_price: float = None  # 進場價（用於確保停損在正確方向）
+) -> Optional[float]:
+    """
+    計算 MA 動態停損價
+    
+    Args:
+        df: 包含收盤價的 DataFrame
+        position: 部位方向（>0 多單，<0 空單）
+        ma_type: "below"=MA 下方/上方固定 tick，"cross"=跌破/突破 MA
+        ma_length: MA 週期
+        ma_ticks: MA 下方/上方幾個 tick
+        ma_multiplier: MA 停損倍數（0=停用）
+        use_prev_ma: 是否使用前一 bar 的 MA（避免未來函數）
+        entry_price: 進場價（可選，用於確保停損在正確方向）
+    
+    Returns:
+        停損價格，若停用則返回 None
+    """
+    if ma_multiplier <= 0 or len(df) < ma_length:
+        return None
+    
+    # 計算 MA - 使用前一 bar 避免未來函數
+    if use_prev_ma and len(df) > ma_length:
+        ma = df['Close'].rolling(window=ma_length).mean().iloc[-2]
+    else:
+        ma = df['Close'].rolling(window=ma_length).mean().iloc[-1]
+    
+    if pd.isna(ma):
+        return None
+    
+    if ma_type == "below":
+        # MA 下方/上方固定 tick 數
+        offset = ma_ticks * ma_multiplier
+        if position > 0:  # 多單：MA 下方
+            stop_price = ma - offset
+            # 確保停損價低於進場價（如果有提供）
+            if entry_price is not None:
+                stop_price = min(stop_price, entry_price - 1)
+        else:  # 空單：MA 上方
+            stop_price = ma + offset
+            # 確保停損價高於進場價（如果有提供）
+            if entry_price is not None:
+                stop_price = max(stop_price, entry_price + 1)
+        return stop_price
+    else:  # "cross"
+        # 直接跌破/突破 MA
+        return ma
 
 
 class PaperTrader:

@@ -12,7 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 from squeeze_futures.data.downloader import download_futures_data
 from squeeze_futures.data.shioaji_client import ShioajiClient
 from squeeze_futures.engine.constants import get_point_value
-from squeeze_futures.engine.indicators import calculate_futures_squeeze, calculate_mtf_alignment
+from squeeze_futures.engine.indicators import calculate_futures_squeeze, calculate_mtf_alignment, calculate_atr
 from squeeze_futures.engine.simulator import PaperTrader
 from squeeze_futures.report.notifier import send_email_notification
 
@@ -62,6 +62,12 @@ def run_simulation(ticker="TMF"):
     LIVE_TRADING, STRATEGY, MGMT, RISK = cfg['live_trading'], cfg['strategy'], cfg['trade_mgmt'], cfg['risk_mgmt']
     PB, TP = STRATEGY.get('pullback', {}), STRATEGY.get('partial_exit', {})
     FILTER_MODE = STRATEGY.get('regime_filter', 'mid')
+    
+    # ATR 動態停損參數
+    # atr_multiplier > 0 → 使用 ATR 動態停損
+    # atr_multiplier = 0 → 使用固定停損 (stop_loss_pts)
+    ATR_MULT = RISK.get('atr_multiplier', 0.0)
+    ATR_LENGTH = RISK.get('atr_length', 14)
 
     # 預處理 Pullback 參數
     PB_ARGS = {
@@ -122,13 +128,19 @@ def run_simulation(ticker="TMF"):
         while True:
             market = get_market_status()
             is_weekend_test = os.getenv("WEEKEND_TEST") == "1"
-            
+
             if not market["open"] and not is_weekend_test:
                 if trader.position != 0:
                     execute_trade("EXIT", trader.entry_price, datetime.now(), abs(trader.position))
-                console.print(f"[{datetime.now().strftime('%H:%M:%S')}] Market Closed. Sleeping...", end="\r")
-                time.sleep(300); continue
-
+                
+                # 收盤後自動結束（避免無限循環和持續寫 log）
+                console.print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Market Closed. Shutting down...")
+                console.print("[dim]Saving final report...[/dim]")
+                trader.save_report()
+                shioaji.logout()
+                console.print("[green]✓ Trader shutdown complete.[/green]")
+                break  # 退出無限循環
+            
             # 1. 抓取數據
             processed_data = {}
             for tf in ["5m", "15m", "1h"]:
@@ -136,9 +148,9 @@ def run_simulation(ticker="TMF"):
                 if df.empty: df = download_futures_data("^TWII", interval=tf, period="5d")
                 if not df.empty:
                     processed_data[tf] = calculate_futures_squeeze(df, bb_length=STRATEGY["length"], **PB_ARGS)
-            
-            if "5m" not in processed_data or "15m" not in processed_data: 
-                if is_weekend_test: break 
+
+            if "5m" not in processed_data or "15m" not in processed_data:
+                if is_weekend_test: break
                 continue
                 
             df_5m, df_15m = processed_data["5m"], processed_data["15m"]
@@ -186,6 +198,22 @@ def run_simulation(ticker="TMF"):
             # --- 3. 進場邏輯 ---
             if trader.position == 0:
                 has_tp1_hit = False
+                
+                # 計算停損點數
+                # 若 atr_multiplier > 0，使用 ATR 動態停損；否則使用固定停損
+                if ATR_MULT > 0:
+                    atr_series = calculate_atr(df_5m, length=ATR_LENGTH)
+                    if not atr_series.empty:
+                        current_atr = atr_series.iloc[-1]
+                        if not pd.isna(current_atr):
+                            stop_loss_pts = current_atr * ATR_MULT
+                        else:
+                            stop_loss_pts = RISK["stop_loss_pts"]
+                    else:
+                        stop_loss_pts = RISK["stop_loss_pts"]
+                else:
+                    stop_loss_pts = RISK["stop_loss_pts"]
+                
                 sqz_buy = (not last_5m['sqz_on']) and score >= STRATEGY["entry_score"] and last_price > vwap and last_5m['mom_state'] == 3
                 pb_buy = df_5m['is_new_high'].tail(12).any() and last_5m['in_bull_pb_zone'] and last_price > last_5m['Open']
                 sqz_sell = (not last_5m['sqz_on']) and score <= -STRATEGY["entry_score"] and last_price < vwap and last_5m['mom_state'] == 0
@@ -196,10 +224,10 @@ def run_simulation(ticker="TMF"):
 
                 if (sqz_buy or pb_buy) and can_long and MGMT["allow_long"]:
                     if not live_ready or check_funds_for_live(shioaji, MGMT["lots_per_trade"]):
-                        execute_trade("BUY", last_price, timestamp, MGMT["lots_per_trade"], stop_loss=RISK["stop_loss_pts"], break_even_trigger=RISK["break_even_pts"])
+                        execute_trade("BUY", last_price, timestamp, MGMT["lots_per_trade"], stop_loss=stop_loss_pts, break_even_trigger=RISK["break_even_pts"])
                 elif (sqz_sell or pb_sell) and can_short and MGMT["allow_short"]:
                     if not live_ready or check_funds_for_live(shioaji, MGMT["lots_per_trade"]):
-                        execute_trade("SELL", last_price, timestamp, MGMT["lots_per_trade"], stop_loss=RISK["stop_loss_pts"], break_even_trigger=RISK["break_even_pts"])
+                        execute_trade("SELL", last_price, timestamp, MGMT["lots_per_trade"], stop_loss=stop_loss_pts, break_even_trigger=RISK["break_even_pts"])
 
             time.sleep(30)
 
