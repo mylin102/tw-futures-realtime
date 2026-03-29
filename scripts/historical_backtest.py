@@ -72,6 +72,13 @@ def load_and_resample(rpt_path, interval="5min", product_code="TMF"):
         
         df_filtered = df[df[product_col] == product_code].copy()
         if df_filtered.empty: return None
+
+        expiry_col = '到期月份(週別)' if '到期月份(週別)' in df_filtered.columns else ('到期月份' if '到期月份' in df_filtered.columns else 'Expiry')
+        if expiry_col in df_filtered.columns:
+            expiry_series = df_filtered[expiry_col].astype(str).str.strip()
+            # 排除跨月價差、組合單等非單一本月合約，例如 202602/202603
+            df_filtered = df_filtered[~expiry_series.str.contains('/', regex=False)].copy()
+            if df_filtered.empty: return None
         
         date_col = '成交日期' if '成交日期' in df_filtered.columns else ('交易日期' if '交易日期' in df_filtered.columns else 'Date')
         time_col = '成交時間' if '成交時間' in df_filtered.columns else 'Time'
@@ -82,6 +89,9 @@ def load_and_resample(rpt_path, interval="5min", product_code="TMF"):
         df_filtered.set_index('datetime', inplace=True)
         
         df_filtered[price_col] = pd.to_numeric(df_filtered[price_col], errors='coerce')
+        # 排除明顯錯價/價差價，避免把 spread price 當成 outright futures price
+        df_filtered = df_filtered[df_filtered[price_col] > 1000].copy()
+        if df_filtered.empty: return None
         resampled = df_filtered[price_col].resample(interval).ohlc()
         resampled['Volume'] = df_filtered[price_col].resample(interval).count()
         
