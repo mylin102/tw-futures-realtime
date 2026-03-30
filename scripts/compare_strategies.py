@@ -233,7 +233,7 @@ class ImprovedStrategy:
                 long_condition = (
                     (not row.get('sqz_on', True)) and
                     row.get('score', 0) >= entry_score and
-                    row.get('mom_state', 0) >= 2 and
+                    row.get('mom_state', 0) >= 1 and        # 【調整】從 2 降至 1
                     row['Close'] > row.get('vwap', row['Close'])
                 )
                 
@@ -449,18 +449,18 @@ def main():
     
     dm = DataManager("data/taifex_raw")
     
-    # 使用 ^TWII 數據模擬 TMF
-    df = dm.load_yahoo("^TWII", period="5d", interval="5m")
+    # 使用 ^TWII 數據模擬 TMF (延長至 30 天)
+    df = dm.load_yahoo("^TWII", period="30d", interval="5m")
     
     if df.empty:
         console.print("[red]✗ 無法載入數據[/red]")
         return
     
-    # 篩選夜盤數據 (15:00-次日 05:00)
-    df.index = pd.to_datetime(df.index)
-    
     console.print(f"[green]✓ 載入 {len(df)} 筆 5m K 棒[/green]")
     console.print(f"[dim]時間範圍：{df.index[0]} ~ {df.index[-1]}[/dim]\n")
+    
+    # 使用全部數據回測 (包含日盤和夜盤)
+    # 注意：Yahoo Finance 的^TWII 只有日盤數據
     
     # 回測配置
     config = {
@@ -472,12 +472,12 @@ def main():
         'atr_multiplier': 2.0,
         
         # 改進版策略參數
-        'entry_score': 50,
+        'entry_score': 40,           # 【調整】從 50 降至 40，增加進場機會
         'stop_loss_pts': 50,
         'tp1_pts': 50,
         'trailing_trigger': 30,
         'trailing_distance': 15,
-        'skip_hours': [21, 22],
+        'skip_hours': [],            # 【調整】不禁用夜盤，觀察為主
     }
     
     # 執行比較回測
