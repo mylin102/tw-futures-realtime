@@ -41,6 +41,7 @@ class RiskMetrics:
     max_drawdown: float
     max_drawdown_pct: float
     ulcer_index: float
+    ulcer_index_annualized: float
     recovery_factor: float
     var_95: float
     cvar_95: float
@@ -153,6 +154,7 @@ class QuantAnalytics:
                 max_drawdown=0,
                 max_drawdown_pct=0,
                 ulcer_index=0,
+                ulcer_index_annualized=0,
                 recovery_factor=0,
                 var_95=0,
                 cvar_95=0,
@@ -186,16 +188,21 @@ class QuantAnalytics:
         else:
             calmar = 0
         
-        # 潰瘍指數
-        ulcer = np.sqrt(np.mean((self.drawdown / self.initial_balance) ** 2)) * 100
+        # 潰瘍指數 (Ulcer Index) - 衡量回撤的深度與持續時間
+        # 公式：sqrt(mean(drawdown_pct^2))
+        drawdown_pct = self.drawdown / self.initial_balance
+        ulcer_index = np.sqrt(np.mean(drawdown_pct ** 2)) * 100
         
-        # 修復因子
+        # 年化潰瘍指數 (假設 5m K 棒，一年約 252*78 根)
+        ulcer_index_annualized = ulcer_index * np.sqrt(252 * 78 / len(self.equity_curve))
+        
+        # 修復因子 (Recovery Factor) = 淨利 / 最大回撤
         recovery = total_return / max_dd if max_dd > 0 else 0
         
         # VaR 95%
         var_95 = np.percentile(self.returns, 5) * 100 if len(self.returns) > 0 else 0
         
-        # CVaR 95%
+        # CVaR 95% (Expected Shortfall)
         cvar_95 = np.mean(self.returns[self.returns <= np.percentile(self.returns, 5)]) * 100 if len(self.returns) > 0 else 0
         
         return RiskMetrics(
@@ -205,7 +212,8 @@ class QuantAnalytics:
             calmar_ratio=calmar,
             max_drawdown=max_dd,
             max_drawdown_pct=max_dd_pct,
-            ulcer_index=ulcer,
+            ulcer_index=ulcer_index,
+            ulcer_index_annualized=ulcer_index_annualized,
             recovery_factor=recovery,
             var_95=var_95,
             cvar_95=cvar_95,
