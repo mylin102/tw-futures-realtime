@@ -473,14 +473,18 @@ def run_simulation(ticker="TMF"):
                         stop_loss_pts = RISK["stop_loss_pts"]
                 else:
                     stop_loss_pts = RISK["stop_loss_pts"]
-                
-                sqz_buy = (not last_5m['sqz_on']) and score >= STRATEGY["entry_score"] and last_price > vwap and last_5m['mom_state'] == 3
+
+                # 【放寬進場條件】
+                # 原：mom_state == 3 (多頭動能增強) / mom_state == 0 (空頭動能增強)
+                # 新：mom_state >= 2 (多頭動能強或持平) / mom_state <= 1 (空頭動能強或持平)
+                sqz_buy = (not last_5m['sqz_on']) and score >= STRATEGY["entry_score"] and last_price > vwap and last_5m['mom_state'] >= 2
                 pb_buy = df_5m['is_new_high'].tail(PB_CONFIRM_BARS).any() and last_5m['in_bull_pb_zone'] and last_price > last_5m['Open']
-                sqz_sell = (not last_5m['sqz_on']) and score <= -STRATEGY["entry_score"] and last_price < vwap and last_5m['mom_state'] == 0
+                sqz_sell = (not last_5m['sqz_on']) and score <= -STRATEGY["entry_score"] and last_price < vwap and last_5m['mom_state'] <= 1
                 pb_sell = df_5m['is_new_low'].tail(PB_CONFIRM_BARS).any() and last_5m['in_bear_pb_zone'] and last_price < last_5m['Open']
 
-                can_long = (last_15m['Close'] > last_15m['ema_filter'] or last_5m['opening_bullish'])
-                can_short = (last_15m['Close'] < last_15m['ema_filter'] or last_5m['opening_bearish'])
+                # 【放寬趨勢過濾】
+                can_long = (last_15m['Close'] > last_15m['ema_filter'] * 0.998) or last_5m['opening_bullish']
+                can_short = (last_15m['Close'] < last_15m['ema_filter'] * 1.002) or last_5m['opening_bearish']
 
                 if (sqz_buy or pb_buy) and can_long and MGMT["allow_long"]:
                     if not live_ready or check_funds_for_live(shioaji, MGMT["lots_per_trade"]):

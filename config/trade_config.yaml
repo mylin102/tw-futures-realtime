@@ -6,10 +6,10 @@ live_trading: false
 # 1. 策略核心參數
 strategy:
   length: 20
-  entry_score: 50            # 【方案 A】從 70 降至 50，增加進場機會
+  entry_score: 30            # 【放寬】從 50 降至 30，大幅增加進場機會
   use_squeeze: true
   use_pullback: true
-  regime_filter: "mid"
+  regime_filter: "loose"     # 【放寬】從 "mid" 改為 "loose"，放寬趨勢過濾
 
   pullback:
     ema_fast: 20
@@ -20,8 +20,8 @@ strategy:
   # 🚀 分批停利策略 (Partial Exit)
   partial_exit:
     enabled: true
-    tp1_pts: 40              # 第一階段停利點數 (40 點)
-    tp1_lots: 1              # 第一階段平倉口數
+    tp1_pts: 30              # 【放寬】從 40 降至 30，更容易達成第一階段停利
+    tp1_lots: 1              # 第一階段平倉 1 口
 
   weights:
     "1h": 0.2

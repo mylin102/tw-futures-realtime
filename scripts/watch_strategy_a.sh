@@ -33,19 +33,19 @@ while true; do
     echo "MomState: $MOM_STATE" | tee -a $LOG_FILE
     echo "Squeeze: $SQZ_ON" | tee -a $LOG_FILE
     
-    # 檢查進場信號
-    # 多頭：score >= 50 AND mom_state == 3 AND sqz_on == False
-    # 空頭：score <= -50 AND mom_state == 0 AND sqz_on == False
+    # 檢查進場信號（放寬條件）
+    # 多頭：score >= 30 AND mom_state >= 2 AND sqz_on == False
+    # 空頭：score <= -30 AND mom_state <= 1 AND sqz_on == False
     
     SCORE_INT=${SCORE%.*}
     
     if [ "$SQZ_ON" = "False" ]; then
-        if [ "$SCORE_INT" -ge 50 ] 2>/dev/null && [ "$MOM_STATE" = "3" ]; then
-            echo "🟢 BUY 信號 detected!" | tee -a $LOG_FILE
-        elif [ "$SCORE_INT" -le -50 ] 2>/dev/null && [ "$MOM_STATE" = "0" ]; then
-            echo "🔴 SELL 信號 detected!" | tee -a $LOG_FILE
+        if [ "$SCORE_INT" -ge 30 ] 2>/dev/null && [ "$MOM_STATE" = "3" -o "$MOM_STATE" = "2" ]; then
+            echo "🟢 BUY 信號 detected! (score>=$SCORE_INT, mom_state=$MOM_STATE)" | tee -a $LOG_FILE
+        elif [ "$SCORE_INT" -le -30 ] 2>/dev/null && [ "$MOM_STATE" = "0" -o "$MOM_STATE" = "1" ]; then
+            echo "🔴 SELL 信號 detected! (score<=$SCORE_INT, mom_state=$MOM_STATE)" | tee -a $LOG_FILE
         else
-            echo "⚪ 無進場信號" | tee -a $LOG_FILE
+            echo "⚪ 無進場信號 (score=$SCORE_INT, mom_state=$MOM_STATE)" | tee -a $LOG_FILE
         fi
     else
         echo "⚪ Squeeze ON 中，等待釋放" | tee -a $LOG_FILE
