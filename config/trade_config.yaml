@@ -81,5 +81,15 @@ execution:
 
 # 5. 實時監控與輪詢設定
 monitoring:
-  poll_interval_secs: 30      # 輪詢間隔（秒）
+  # 數據模式選擇：
+  #   - "polling": 傳統輪詢模式（每 poll_interval_secs 秒查詢一次）
+  #   - "callback": 使用 shioaji callback 接收即時數據（推薦，但需要 shioaji 支援）
+  data_mode: "polling"
+  
+  poll_interval_secs: 30      # 輪詢間隔（秒）- 僅 data_mode=polling 時使用
   pb_confirmation_bars: 12    # 高點/低點確認週期（K 棒數量）
+  
+  # Callback 模式設定
+  callback:
+    use_tick_data: false      # 是否使用 tick 數據（true=即時 tick, false=K 棒更新）
+    buffer_size: 100          # K 棒緩衝大小

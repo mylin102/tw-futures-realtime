@@ -1,8 +1,9 @@
 import os
 import logging
 import pandas as pd
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from typing import Callable, Optional, Dict, Any
+from collections import deque
 
 try:
     import shioaji as sj
@@ -10,7 +11,7 @@ except ImportError:
     sj = None
 
 load_dotenv()
-logger = logging.getLogger(__name__)
+logger = logging.getLogger.getLogger(__name__)
 
 INTERVAL_MAP = {
     "1m": "1min",
@@ -25,6 +26,9 @@ class ShioajiClient:
     def __init__(self):
         self.api = None
         self.is_logged_in = False
+        self._tick_callbacks = {}  # 儲存 tick 回呼函數
+        self._kbar_callbacks = {}  # 儲存 K 棒回呼函數
+        self._latest_kbars: Dict[str, deque] = {}  # 儲存最新 K 棒數據
         if sj is None: return
         self.api = sj.Shioaji()
 
@@ -44,13 +48,104 @@ class ShioajiClient:
             logger.error(f"Shioaji login failed: {e}")
             return False
 
+    def subscribe_market_data(self, contract, callback: Callable):
+        """
+        訂閱市場數據（使用 callback 模式）
+        
+        Args:
+            contract: Shioaji 合約物件
+            callback: 回呼函數，接收 (contract, tick) 參數
+        """
+        if not self.is_logged_in: return False
+        try:
+            self.api.quote.subscribe(
+                contract,
+                quote_type=sj.constant.QuoteType.Tick,
+                callback=callback
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Subscribe failed: {e}")
+            return False
+
+    def unsubscribe_market_data(self, contract):
+        """取消訂閱市場數據"""
+        if not self.is_logged_in: return False
+        try:
+            self.api.quote.unsubscribe(contract)
+            return True
+        except Exception as e:
+            logger.error(f"Unsubscribe failed: {e}")
+            return False
+
+    def get_kline(self, ticker: str, interval: str = "5m"):
+        """
+        獲取 K 棒數據（polling 模式，向後相容）
+        
+        Args:
+            ticker: 商品代號
+            interval: 週期 (5m, 15m, 1h)
+            
+        Returns:
+            DataFrame with OHLCV data
+        """
+        if not self.is_logged_in: return pd.DataFrame()
+        try:
+            contract = self.get_futures_contract(ticker)
+            if not contract: return pd.DataFrame()
+            start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+            kbars = self.api.kbars(contract, start=start_date)
+            df = pd.DataFrame({**kbars})
+            if df.empty: return df
+            df.ts = pd.to_datetime(df.ts)
+            df.set_index('ts', inplace=True)
+            rule = INTERVAL_MAP.get(interval, interval)
+            if rule != "1min":
+                df = df.resample(rule, label="right", closed="left").agg({
+                    "Open": "first",
+                    "High": "max",
+                    "Low": "min",
+                    "Close": "last",
+                    "Volume": "sum",
+                })
+            df = df.rename(columns={'Open':'Open','High':'High','Low':'Low','Close':'Close','Volume':'Volume'})
+            return df.dropna(subset=["Open", "High", "Low", "Close"])
+        except Exception: return pd.DataFrame()
+
+    def start_kbar_callback(self, contract, interval: str, callback: Callable):
+        """
+        啟動 K 棒回呼（非同步接收 K 棒更新）
+        
+        Args:
+            contract: Shioaji 合約物件
+            interval: K 棒週期 (1min, 5min, etc.)
+            callback: 回呼函數，接收 (contract, kbar) 參數
+            
+        Kbar 物件屬性:
+            - ts: timestamp
+            - Open, High, Low, Close: 價格
+            - Volume: 成交量
+            - amount: 成交金額
+        """
+        if not self.is_logged_in: return False
+        try:
+            # 訂閱 K 棒數據
+            self.api.quote.subscribe(
+                contract,
+                quote_type=sj.constant.QuoteType.Quote,
+                callback=callback
+            )
+            logger.info(f"Subscribed to {contract.code} kbar ({interval})")
+            return True
+        except Exception as e:
+            logger.error(f"Kbar callback subscription failed: {e}")
+            return False
+
     def get_available_margin(self):
         """查詢期貨帳戶可用保證金 (TWD)"""
         if not self.is_logged_in: return 0
         try:
-            # 取得所有帳戶的權益數
             margins = self.api.get_account_margin()
-            # 這裡簡單取第一個期貨帳戶的可用餘額 (Available Margin)
             if margins:
                 return float(margins[0].available_margin)
             return 0
@@ -91,29 +186,14 @@ class ShioajiClient:
             logger.error(f"Order placement failed: {e}")
             return None
 
-    def get_kline(self, ticker: str, interval: str = "5m"):
-        if not self.is_logged_in: return pd.DataFrame()
-        try:
-            contract = self.get_futures_contract(ticker)
-            if not contract: return pd.DataFrame()
-            start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-            kbars = self.api.kbars(contract, start=start_date)
-            df = pd.DataFrame({**kbars})
-            if df.empty: return df
-            df.ts = pd.to_datetime(df.ts)
-            df.set_index('ts', inplace=True)
-            rule = INTERVAL_MAP.get(interval, interval)
-            if rule != "1min":
-                df = df.resample(rule, label="right", closed="left").agg({
-                    "Open": "first",
-                    "High": "max",
-                    "Low": "min",
-                    "Close": "last",
-                    "Volume": "sum",
-                })
-            df = df.rename(columns={'Open':'Open','High':'High','Low':'Low','Close':'Close','Volume':'Volume'})
-            return df.dropna(subset=["Open", "High", "Low", "Close"])
-        except Exception: return pd.DataFrame()
-
     def logout(self):
-        if self.api: self.api.logout()
+        """登出並取消所有訂閱"""
+        # 取消所有訂閱
+        for contract in list(self._kbar_callbacks.keys()):
+            self.unsubscribe_market_data(contract)
+        self._kbar_callbacks.clear()
+        self._tick_callbacks.clear()
+        
+        if self.api:
+            self.api.logout()
+            self.is_logged_in = False
