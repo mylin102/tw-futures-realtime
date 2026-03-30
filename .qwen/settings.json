@@ -26,7 +26,8 @@
       "Bash(grep *)",
       "Bash(nohup *)",
       "Bash(echo *)",
-      "Bash(chmod *)"
+      "Bash(chmod *)",
+      "Bash(tee *)"
     ]
   },
   "$version": 3

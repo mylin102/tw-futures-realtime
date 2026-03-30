@@ -39,7 +39,22 @@ def load_config():
 
 
 def load_market_data(data_dir="logs/market_data"):
-    """載入儲存的市場數據"""
+    """載入市場數據（優先使用 Yahoo Finance 歷史數據）"""
+    
+    # 1. 優先使用 Yahoo Finance 數據
+    yf_files = list(Path("data/taifex_raw").glob("TWII*.csv"))
+    if yf_files:
+        console.print("[yellow]找到 Yahoo Finance 數據，使用中...[/yellow]")
+        df = pd.read_csv(yf_files[0], index_col=0, parse_dates=True)
+        df = df.rename(columns={
+            'Open': 'Open', 'High': 'High', 'Low': 'Low', 
+            'Close': 'Close', 'Volume': 'Volume'
+        })
+        console.print(f"[green]載入 {len(df)} 筆 Yahoo Finance 5m K 棒數據[/green]")
+        console.print(f"時間範圍：{df.index[0]} ~ {df.index[-1]}")
+        return df
+    
+    # 2. 使用儲存的監控數據
     data_files = list(Path(data_dir).glob("TMF_*.csv"))
     
     # 如果沒有儲存的數據，嘗試從 historical_backtest 載入
@@ -79,18 +94,20 @@ def load_market_data(data_dir="logs/market_data"):
     return combined
 
 
-def run_param_backtest(df, params, cfg):
+def run_param_backtest(df_raw, params, cfg):
     """
-    執行單一參數組合回測（使用已計算好的指標數據）
+    執行單一參數組合回測
     
     Args:
-        df: 市場數據 DataFrame（需包含 score, sqz_on, mom_state, regime, bull_align, bear_align, in_pb_zone, Close, vwap, Open）
+        df_raw: 原始市場數據 DataFrame（需包含 Open, High, Low, Close, Volume）
         params: 參數字典
         cfg: 配置文件
     
     Returns:
         回測結果字典
     """
+    from squeeze_futures.engine.indicators import calculate_futures_squeeze
+    
     # 解構參數
     entry_score = params['entry_score']
     mom_state_long = params['mom_state_long']
@@ -114,18 +131,17 @@ def run_param_backtest(df, params, cfg):
     MGMT = cfg['trade_mgmt']
     RISK = cfg['risk_mgmt']
     TP = STRATEGY.get('partial_exit', {})
+    PB = STRATEGY.get('pullback', {})
     
-    # 確保數據有必要的欄位
-    required_cols = ['Close', 'score', 'sqz_on', 'mom_state', 'regime', 'bull_align', 'bear_align', 'in_pb_zone']
-    for col in required_cols:
-        if col not in df.columns:
-            df[col] = 0 if col in ['score', 'mom_state'] else False
+    PB_ARGS = {
+        'ema_fast': PB.get('ema_fast', 20),
+        'ema_slow': PB.get('ema_slow', 60),
+        'lookback': PB.get('lookback', 60),
+        'pb_buffer': PB.get('buffer', 1.002)
+    }
     
-    # 如果沒有 Open，用 Close 代替
-    if 'Open' not in df.columns:
-        df['Open'] = df['Close']
-    if 'vwap' not in df.columns:
-        df['vwap'] = df['Close']
+    # 計算指標
+    df = calculate_futures_squeeze(df_raw.copy(), bb_length=STRATEGY["length"], **PB_ARGS)
     
     # 回測主循環
     has_tp1_hit = False
@@ -136,19 +152,20 @@ def run_param_backtest(df, params, cfg):
         timestamp = row.name if hasattr(row, 'name') else df.index[i]
         last_price = row['Close']
         vwap = row.get('vwap', last_price)
-        score = row['score']
+        score = row.get('score', 0)
         
-        # 趨勢過濾（使用 regime 欄位）
-        regime = row.get('regime', 'NORMAL')
+        # 趨勢過濾
         if regime_filter == "loose":
             can_long = True
             can_short = True
         elif regime_filter == "mid":
-            can_long = regime in ['STRONG', 'NORMAL']
-            can_short = regime in ['WEAK', 'NORMAL']
+            ema_filter = row.get('ema_filter', last_price)
+            can_long = last_price > ema_filter * 0.998
+            can_short = last_price < ema_filter * 1.002
         else:  # strict
-            can_long = regime == 'STRONG'
-            can_short = regime == 'WEAK'
+            ema_filter = row.get('ema_filter', last_price)
+            can_long = last_price > ema_filter * 0.999
+            can_short = last_price < ema_filter * 1.001
         
         # 停損計算
         stop_loss_pts = RISK.get('stop_loss_pts', 30)
@@ -163,7 +180,9 @@ def run_param_backtest(df, params, cfg):
             
             pb_buy = False
             if use_pb:
-                pb_buy = row.get('bull_align', False) and row.get('in_pb_zone', False) and last_price > row['Open']
+                pb_buy = row.get('in_bull_pb_zone', False) and last_price > row['Open']
+                if PB_CONFIRM_BARS > 0:
+                    pb_buy = pb_buy and df['is_new_high'].iloc[max(0, i-PB_CONFIRM_BARS):i].any()
             
             if (sqz_buy or pb_buy) and can_long and MGMT.get("allow_long", True):
                 trader.execute_signal(
@@ -180,7 +199,9 @@ def run_param_backtest(df, params, cfg):
             
             pb_sell = False
             if use_pb:
-                pb_sell = row.get('bear_align', False) and row.get('in_pb_zone', False) and last_price < row['Open']
+                pb_sell = row.get('in_bear_pb_zone', False) and last_price < row['Open']
+                if PB_CONFIRM_BARS > 0:
+                    pb_sell = pb_sell and df['is_new_low'].iloc[max(0, i-PB_CONFIRM_BARS):i].any()
             
             if (sqz_sell or pb_sell) and can_short and MGMT.get("allow_short", True):
                 trader.execute_signal(
