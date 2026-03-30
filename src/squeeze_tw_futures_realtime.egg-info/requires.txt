@@ -11,3 +11,5 @@ tabulate>=0.10.0
 pyyaml>=6.0.3
 jinja2>=3.1.6
 numba>=0.61.2
+lxml>=6.0.2
+html5lib>=1.1

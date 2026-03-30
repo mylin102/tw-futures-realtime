@@ -75,6 +75,7 @@ def simulate_full_day_trading():
     # ========== 載入數據 ==========
     console.print("[bold yellow]【2】市場數據載入[/bold yellow]\n")
     
+    # 使用 ^TWII 數據模擬 TMF 期貨
     dm = DataManager("data/taifex_raw")
     df = dm.load_yahoo("^TWII", period="60d", interval="5m")
     df = dm.add_indicators(df, indicators=['squeeze', 'vwap'])
