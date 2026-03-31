@@ -47,7 +47,7 @@ BACKTEST_DIR = Path("data/backtest")
 
 
 # 快取函數
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=1)
 def load_market_data(date: str = None):
     """載入市場數據"""
     if date is None:
@@ -86,11 +86,11 @@ def load_market_data(date: str = None):
         return None
 
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=1)
 def parse_trade_log(date: str = None):
     """解析交易日誌"""
-    if date is None:
-        date = datetime.now().strftime("%Y-%m-%d")
+    # 始終使用今日日期
+    date = datetime.now().strftime("%Y-%m-%d")
     
     trades = []
     if LOG_FILE.exists():
@@ -200,6 +200,13 @@ with st.sidebar:
     # 手動刷新
     if st.button("🔄 立即刷新"):
         st.cache_data.clear()
+        st.rerun()
+    
+    # 自動刷新按鈕
+    st.write("**自動刷新：**")
+    if st.checkbox("啟用自動刷新 (10 秒)", value=False):
+        import time
+        time.sleep(0.1)
         st.rerun()
     
     st.divider()

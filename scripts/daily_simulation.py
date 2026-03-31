@@ -15,8 +15,12 @@ from squeeze_futures.engine.constants import get_point_value
 from squeeze_futures.engine.simulator import PaperTrader
 from squeeze_futures.engine.indicators import calculate_futures_squeeze, calculate_mtf_alignment, calculate_atr
 from squeeze_futures.report.notifier import send_email_notification
+from squeeze_futures.data.data_storage import save_kbar, save_trade, get_storage
 
 console = Console()
+
+# 初始化數據儲存
+data_storage = get_storage("TMF")
 
 
 
@@ -151,6 +155,14 @@ def run_simulation(ticker="TMF"):
                 console.print(f"[bold red][{ts}] Live order failed: {signal} {lots}[/bold red]")
                 return None
 
+        # 記錄交易到儲存系統
+        save_trade({
+            'type': signal,
+            'timestamp': ts,
+            'price': price,
+            'lots': lots,
+        })
+        
         result = trader.execute_signal(
             signal,
             price,
