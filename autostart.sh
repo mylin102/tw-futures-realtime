@@ -1,12 +1,36 @@
 #!/bin/bash
 # 🌙☀️ Squeeze Futures Auto-Start Script
 # 自動判斷日盤/夜盤並使用對應配置
+# 包含錯誤處理和自動重啟機制
 
 # 進入專案目錄
 cd /Users/mylin/Documents/mylin102/tw-futures-realtime
 
 # 建立日誌目錄
 mkdir -p logs
+
+# 錯誤處理函數
+handle_error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ 錯誤：$1" >> logs/automation.log
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 等待 60 秒後重啟..." >> logs/automation.log
+    sleep 60
+}
+
+# 監控函數
+monitor_process() {
+    local pid=$1
+    local script_name=$2
+    
+    while kill -0 $pid 2>/dev/null; do
+        sleep 30
+        # 檢查進程是否仍然運行
+        if ! kill -0 $pid 2>/dev/null; then
+            handle_error "$script_name 進程終止"
+            return 1
+        fi
+    done
+    return 0
+}
 
 # 獲取當前時間
 HOUR=$(date +%H)
@@ -30,8 +54,8 @@ if [ "$HOUR" -ge 15 ] || [ "$HOUR" -lt 5 ]; then
 elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -lt 14 ]; then
     # 日盤時段
     SESSION="day"
-    SCRIPT="scripts/daily_simulation_v2.py"
-    CONFIG="config/day_config.yaml"
+    SCRIPT="scripts/daily_simulation.py"  # 改用穩定的原始版本
+    CONFIG="config/trade_config.yaml"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ☀️ 日盤時段 (08:45-13:45)" >> logs/automation.log
 else
     # 非交易時段
@@ -39,6 +63,35 @@ else
     exit 0
 fi
 
-# 執行對應的交易腳本
+# 執行對應的交易腳本（包含錯誤處理）
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 啟動 $SESSION 交易系統..." >> logs/automation.log
-/Users/mylin/.local/bin/uv run python $SCRIPT >> logs/automation.log 2>&1
+
+# 使用 while 循環實現自動重啟
+while true; do
+    # 檢查是否仍為交易時段
+    CURRENT_HOUR=$(date +%H)
+    if [ "$SESSION" = "day" ] && ([ "$CURRENT_HOUR" -lt 8 ] || [ "$CURRENT_HOUR" -ge 14 ]); then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 日盤時段結束" >> logs/automation.log
+        break
+    fi
+    
+    if [ "$SESSION" = "night" ] && ([ "$CURRENT_HOUR" -ge 5 ] && [ "$CURRENT_HOUR" -lt 15 ]); then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 夜盤時段結束" >> logs/automation.log
+        break
+    fi
+    
+    # 啟動腳本
+    /Users/mylin/.local/bin/uv run python $SCRIPT >> logs/automation.log 2>&1 &
+    SCRIPT_PID=$!
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 進程 PID: $SCRIPT_PID" >> logs/automation.log
+    
+    # 監控進程
+    monitor_process $SCRIPT_PID $SCRIPT
+    
+    # 如果進程結束，記錄並等待重啟
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️  進程意外終止，準備重啟" >> logs/automation.log
+    handle_error "腳本執行完畢或崩潰"
+done
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✓ 交易系統停止" >> logs/automation.log

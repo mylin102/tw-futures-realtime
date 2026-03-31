@@ -367,3 +367,29 @@ def run_improved_simulation(ticker="TMF"):
 
 if __name__ == "__main__":
     run_improved_simulation("TMF")
+
+
+def save_bar_data(row, score, regime_desc, ticker="TMF"):
+    """將每一棒的指標狀態存入 CSV"""
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log_dir = os.path.join(base_dir, "logs", "market_data")
+    os.makedirs(log_dir, exist_ok=True)
+    date_str = datetime.now().strftime("%Y%m%d")
+    file_path = os.path.join(log_dir, f"{ticker}_{date_str}_indicators.csv")
+    
+    data = {
+        "timestamp": [row.name],
+        "close": [row['Close']],
+        "vwap": [row.get('vwap', row['Close'])],
+        "score": [score],
+        "sqz_on": [row.get('sqz_on', False)],
+        "mom_state": [row.get('mom_state', 0)],
+        "regime": [regime_desc],
+        "bull_align": [row.get('bull_align', False)],
+        "bear_align": [row.get('bear_align', False)],
+        "in_pb_zone": [row.get('in_bull_pb_zone', False) or row.get('in_bear_pb_zone', False)]
+    }
+    df = pd.DataFrame(data)
+    header = not os.path.exists(file_path)
+    df.to_csv(file_path, mode='a', index=False, header=header)

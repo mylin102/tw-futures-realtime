@@ -204,6 +204,45 @@ with st.sidebar:
     
     st.divider()
     
+    # 顯示當前策略參數
+    st.header("📋 策略參數")
+    
+    config_file = Path("config/trade_config.yaml")
+    if config_file.exists():
+        try:
+            import yaml
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            st.subheader("進場條件")
+            st.write(f"**Entry Score**: ≥ {config['strategy']['entry_score']}")
+            st.write(f"**Regime Filter**: {config['strategy']['regime_filter']}")
+            st.write(f"**使用 Squeeze**: {config['strategy']['use_squeeze']}")
+            st.write(f"**使用 Pullback**: {config['strategy']['use_pullback']}")
+            
+            st.subheader("停損/停利")
+            st.write(f"**停損點數**: {config['risk_mgmt']['stop_loss_pts']} pts")
+            st.write(f"**停利點數**: {config['strategy']['partial_exit']['tp1_pts']} pts")
+            st.write(f"**VWAP 離場**: {config['risk_mgmt']['exit_on_vwap']}")
+            
+            st.subheader("部位管理")
+            st.write(f"**每筆口數**: {config['trade_mgmt']['lots_per_trade']} 口")
+            st.write(f"**最大部位**: {config['trade_mgmt']['max_positions']} 口")
+            
+            st.subheader("移動停損")
+            if config['risk_mgmt'].get('trailing_stop_enabled', False):
+                st.write(f"**觸發點數**: {config['risk_mgmt']['trailing_stop_trigger_pts']} pts")
+                st.write(f"**距離**: {config['risk_mgmt']['trailing_stop_distance_pts']} pts")
+            else:
+                st.write("❌ 未啟用")
+            
+        except Exception as e:
+            st.error(f"載入配置失敗：{e}")
+    else:
+        st.warning("找不到配置文件")
+    
+    st.divider()
+    
     # 快速連結
     st.subheader("🔗 快速連結")
     st.markdown("""
