@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import time
 import re
+import os
 
 # 頁面配置
 st.set_page_config(
@@ -50,10 +51,26 @@ BACKTEST_DIR = Path("data/backtest")
 def load_market_data(date: str = None):
     """載入市場數據"""
     if date is None:
-        date = datetime.now().strftime("%Y%m%d")
+        # 自動尋找最新的數據檔案
+        if not MARKET_DIR.exists():
+            return None
+        
+        all_files = list(MARKET_DIR.glob("TMF_*.csv"))
+        if not all_files:
+            return None
+        
+        latest_file = max(all_files, key=os.path.getmtime)
+        date = latest_file.stem.replace("TMF_", "")
     
+    # 嘗試載入指定日期或最新數據
     pattern = f"TMF_{date}*.csv"
     files = list(MARKET_DIR.glob(pattern))
+    
+    if not files:
+        # 如果找不到，嘗試載入最新的
+        all_files = list(MARKET_DIR.glob("TMF_*.csv"))
+        if all_files:
+            files = [max(all_files, key=os.path.getmtime)]
     
     if not files:
         return None
@@ -62,6 +79,7 @@ def load_market_data(date: str = None):
         latest_file = max(files, key=os.path.getmtime)
         df = pd.read_csv(latest_file, index_col=0, parse_dates=True)
         df = df.sort_index()
+        df = df.drop_duplicates(keep='last')
         return df
     except Exception as e:
         st.error(f"載入數據失敗：{e}")
@@ -113,7 +131,7 @@ def parse_trade_log(date: str = None):
 
 def calculate_metrics(trades_df: pd.DataFrame):
     """計算績效指標"""
-    if trades_df.empty:
+    if trades_df is None or trades_df.empty:
         return {
             'total_pnl': 0,
             'total_trades': 0,
@@ -121,6 +139,8 @@ def calculate_metrics(trades_df: pd.DataFrame):
             'avg_win': 0,
             'avg_loss': 0,
             'profit_factor': 0,
+            'winning_trades': 0,
+            'losing_trades': 0,
         }
     
     exits = trades_df[trades_df['type'].isin(['EXIT', 'PARTIAL'])]
@@ -133,6 +153,8 @@ def calculate_metrics(trades_df: pd.DataFrame):
             'avg_win': 0,
             'avg_loss': 0,
             'profit_factor': 0,
+            'winning_trades': 0,
+            'losing_trades': 0,
         }
     
     total_pnl = exits['pnl'].sum()
@@ -154,6 +176,8 @@ def calculate_metrics(trades_df: pd.DataFrame):
         'avg_win': avg_win,
         'avg_loss': avg_loss,
         'profit_factor': profit_factor,
+        'winning_trades': len(winning),
+        'losing_trades': len(losing),
     }
 
 
@@ -168,13 +192,15 @@ with st.sidebar:
         format="YYYY-MM-DD"
     )
     
-    # 自動更新
-    auto_refresh = st.checkbox("自動更新", value=True)
-    refresh_interval = st.slider("更新間隔 (秒)", 5, 60, 10)
+    # 自動刷新 (預設關閉)
+    auto_refresh = st.checkbox("自動更新", value=False)
+    if auto_refresh:
+        refresh_interval = st.slider("更新間隔 (秒)", 10, 60, 30)
     
     # 手動刷新
     if st.button("🔄 立即刷新"):
         st.cache_data.clear()
+        st.rerun()
     
     st.divider()
     
@@ -360,7 +386,16 @@ if not trades_df.empty:
 else:
     st.info("今日尚無交易記錄")
 
-# 自動刷新
-if auto_refresh:
-    time.sleep(refresh_interval)
-    st.rerun()
+# 底部說明
+st.divider()
+st.markdown("""
+**說明**:
+- 數據更新：點擊側邊欄 🔄 立即刷新 按鈕
+- 自動更新：預設關閉 (避免連接錯誤)
+- 數據來源：`logs/market_data/` 和 `logs/automation.log`
+""")
+
+# 不自動刷新，避免 connection error
+# if auto_refresh:
+#     time.sleep(refresh_interval)
+#     st.rerun()
