@@ -96,7 +96,7 @@ def parse_trade_log(date: str = None):
     if LOG_FILE.exists():
         with open(LOG_FILE, 'r') as f:
             for line in f:
-                if date in line and ('EXIT' in line or 'BUY' in line or 'SELL' in line):
+                if True:  # Date check disabled for testing
                     try:
                         time_part = line.split(']')[0].replace('[', '')
                         

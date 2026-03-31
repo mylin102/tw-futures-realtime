@@ -12,10 +12,12 @@ LANG=zh_TW.UTF-8
 
 # 🌙 夜盤啟動 (週一至週五 14:55)
 # 提前 5 分鐘啟動，確保系統就緒
+# 同時啟動交易系統和儀表板
 0 15 * * 1-5 /Users/mylin/Documents/mylin102/tw-futures-realtime/autostart.sh
 
 # ☀️ 日盤啟動 (週一至週五 08:40)
 # 提前 5 分鐘啟動，確保系統就緒
+# 同時啟動交易系統和儀表板
 40 8 * * 1-5 /Users/mylin/Documents/mylin102/tw-futures-realtime/autostart.sh
 
 # ============================================
@@ -33,7 +35,10 @@ LANG=zh_TW.UTF-8
 # ============================================
 
 # 每 5 分鐘檢查交易系統狀態
-*/5 * * * * ps aux | grep -v grep | grep "night_trading_v3.py\\|daily_simulation_v2.py" > /dev/null || echo "[$(date)] Trading system not running" >> /Users/mylin/Documents/mylin102/tw-futures-realtime/logs/monitor.log
+*/5 * * * * ps aux | grep -v grep | grep "daily_simulation\|night_trading" > /dev/null || echo "[$(date)] Trading system not running" >> /Users/mylin/Documents/mylin102/tw-futures-realtime/logs/monitor.log
+
+# 每小時檢查儀表板狀態
+0 * * * * ps aux | grep -v grep | grep "streamlit.*dashboard" > /dev/null || echo "[$(date)] Dashboard not running" >> /Users/mylin/Documents/mylin102/tw-futures-realtime/logs/monitor.log
 
 # ============================================
 # 備註
@@ -49,15 +54,21 @@ LANG=zh_TW.UTF-8
 # 
 # 日誌位置：
 # - 交易日誌：/Users/mylin/Documents/mylin102/tw-futures-realtime/logs/automation.log
+# - 儀表板日誌：/Users/mylin/Documents/mylin102/tw-futures-realtime/logs/dashboard.log
 # - 監控日誌：/Users/mylin/Documents/mylin102/tw-futures-realtime/logs/monitor.log
 # 
 # 手動啟動：
 # 夜盤：bash /Users/mylin/Documents/mylin102/tw-futures-realtime/autostart.sh
 # 日盤：bash /Users/mylin/Documents/mylin102/tw-futures-realtime/autostart.sh
+# 儀表板：uv run streamlit run src/squeeze_futures/ui/dashboard.py
 # 
 # 查看日誌：
-# tail -f /Users/mylin/Documents/mylin102/tw-futures-realtime/logs/automation.log
+# tail -f logs/automation.log
+# tail -f logs/dashboard.log
 # 
 # 停止交易：
-# pkill -f "night_trading_v3.py"
-# pkill -f "daily_simulation_v2.py"
+# pkill -f "daily_simulation"
+# pkill -f "night_trading"
+# 
+# 停止儀表板：
+# pkill -f "streamlit"

@@ -75,7 +75,17 @@
       "Bash(file_path)",
       "Bash(df.to_csv)",
       "Bash(eof)",
-      "Bash(pgrep *)"
+      "Bash(pgrep *)",
+      "Bash(sed *)",
+      "Bash(with)",
+      "Bash(as *)",
+      "Bash(lines *)",
+      "Bash(lines)",
+      "Bash(line.replace)",
+      "Bash(print)",
+      "Bash(break)",
+      "Bash(f.writelines)",
+      "Bash(pyeof)"
     ]
   },
   "$version": 3

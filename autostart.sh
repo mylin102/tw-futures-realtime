@@ -1,7 +1,7 @@
 #!/bin/bash
 # 🌙☀️ Squeeze Futures Auto-Start Script
 # 自動判斷日盤/夜盤並使用對應配置
-# 包含錯誤處理和自動重啟機制
+# 包含錯誤處理、自動重啟機制和儀表板啟動
 
 # 進入專案目錄
 cd /Users/mylin/Documents/mylin102/tw-futures-realtime
@@ -32,6 +32,26 @@ monitor_process() {
     return 0
 }
 
+# 啟動儀表板
+start_dashboard() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 📊 啟動儀表板 (port 8501)..." >> logs/automation.log
+    
+    # 檢查是否已運行
+    if pgrep -f "streamlit.*dashboard.py" > /dev/null 2>&1; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️  儀表板已在運行中" >> logs/automation.log
+    else
+        # 啟動儀表板
+        nohup uv run streamlit run src/squeeze_futures/ui/dashboard.py \
+            --server.port 8501 \
+            --server.address 0.0.0.0 \
+            --server.headless true \
+            > logs/dashboard.log 2>&1 &
+        DASHBOARD_PID=$!
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✓ 儀表板已啟動 (PID: $DASHBOARD_PID)" >> logs/automation.log
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🌐 訪問：http://localhost:8501" >> logs/automation.log
+    fi
+}
+
 # 獲取當前時間
 HOUR=$(date +%H)
 DAY_OF_WEEK=$(date +%u)  # 1=週一，7=週日
@@ -54,7 +74,7 @@ if [ "$HOUR" -ge 15 ] || [ "$HOUR" -lt 5 ]; then
 elif [ "$HOUR" -ge 8 ] && [ "$HOUR" -lt 14 ]; then
     # 日盤時段
     SESSION="day"
-    SCRIPT="scripts/daily_simulation.py"  # 改用穩定的原始版本
+    SCRIPT="scripts/daily_simulation.py"
     CONFIG="config/trade_config.yaml"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ☀️ 日盤時段 (08:45-13:45)" >> logs/automation.log
 else
@@ -62,6 +82,9 @@ else
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 非交易時段，跳过" >> logs/automation.log
     exit 0
 fi
+
+# 啟動儀表板
+start_dashboard
 
 # 執行對應的交易腳本（包含錯誤處理）
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 啟動 $SESSION 交易系統..." >> logs/automation.log

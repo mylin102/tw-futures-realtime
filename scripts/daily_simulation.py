@@ -477,9 +477,9 @@ def run_simulation(ticker="TMF"):
                 # 【放寬進場條件】
                 # 原：mom_state == 3 (多頭動能增強) / mom_state == 0 (空頭動能增強)
                 # 新：mom_state >= 2 (多頭動能強或持平) / mom_state <= 1 (空頭動能強或持平)
-                sqz_buy = (not last_5m['sqz_on']) and score >= STRATEGY["entry_score"] and last_price > vwap and last_5m['mom_state'] >= 2
+                sqz_buy = (not last_5m['sqz_on']) and score >= STRATEGY["entry_score"] and True and last_5m["mom_state"] >= 2  # VWAP check disabled for entry
                 pb_buy = df_5m['is_new_high'].tail(PB_CONFIRM_BARS).any() and last_5m['in_bull_pb_zone'] and last_price > last_5m['Open']
-                sqz_sell = (not last_5m['sqz_on']) and score <= -STRATEGY["entry_score"] and last_price < vwap and last_5m['mom_state'] <= 1
+                sqz_sell = (not last_5m['sqz_on']) and score <= -STRATEGY["entry_score"] and True and last_5m["mom_state"] <= 1  # VWAP check disabled for entry
                 pb_sell = df_5m['is_new_low'].tail(PB_CONFIRM_BARS).any() and last_5m['in_bear_pb_zone'] and last_price < last_5m['Open']
 
                 # 【趨勢過濾 - 根據 regime_filter 設定】
