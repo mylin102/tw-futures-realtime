@@ -1,25 +1,26 @@
-# 🌙 夜盤交易策略配置
-# 特點：
-# - 參考 TSM (台積電 ADR) 走勢
-# - 放寬停損 (夜盤波動大)
-# - 時間過濾 (避開美股開盤高波動)
+# 🌙 夜盤交易策略配置 (優化版)
+# 優化重點：
+# - 統一進場門檻 (與日盤相同)
+# - 改用範圍市場單 (減少滑價)
+# - 優化 TSM 確認參數
+# - 加快輪詢速度
 
 # 實戰總開關
 live_trading: false
 
-# 1. 策略核心參數 (夜盤版)
+# 1. 策略核心參數
 strategy:
   length: 20
-  entry_score: 35            # 夜盤適中門檻 (降低)
+  entry_score: 20            # 【優化】統一與日盤相同 (回測最佳)
   use_squeeze: true
   use_pullback: true
-  regime_filter: "loose"     # 夜盤放寬趨勢過濾
+  regime_filter: "loose"
   
-  # TSM 確認參數 (15 分線)
-  tsm_confirmation: true     # 啟用 TSM 確認
-  tsm_min_confidence: 0.5    # TSM 最低信心度 (降低)
-  tsm_correlation_threshold: 0.7  # 最低相關性門檻
-  tsm_timeframe: "15m"       # 【關鍵】TSM 使用 15 分線
+  # TSM 確認參數
+  tsm_confirmation: true
+  tsm_min_confidence: 0.7    # 【優化】提高信心度門檻
+  tsm_correlation_threshold: 0.7
+  tsm_timeframe: "15m"
 
   pullback:
     ema_fast: 20
@@ -27,48 +28,45 @@ strategy:
     lookback: 60
     buffer: 1.002
 
-  # 分批停利策略 (夜盤版)
   partial_exit:
     enabled: true
-    tp1_pts: 60              # 夜盤目標更大
+    tp1_pts: 50              # 【優化】統一與日盤相同
     tp1_lots: 1
 
-  # MTF 權重 (15 分線為主)
   weights:
-    "1h": 0.3                # 1 小時權重提高
-    "15m": 0.5               # 15 分權重最高 (看趨勢)
-    "5m": 0.2                # 5 分權重降低 (找進場點)
+    "1h": 0.3
+    "15m": 0.5
+    "5m": 0.2
 
 # 2. 部位管理
 trade_mgmt:
-  lots_per_trade: 1          # 夜盤減碼
-  max_positions: 2
+  lots_per_trade: 1
+  max_positions: 1           # 【優化】單一部位 (降低風險)
   allow_long: true
   allow_short: true
-  force_close_at_end: true   # 夜盤強制收盤
+  force_close_at_end: true
 
-# 3. 風險控管 (夜盤版)
+# 3. 風險控管
 risk_mgmt:
-  # MA 動態停損 (夜盤放寬)
-  ma_stop_type: "below"
-  ma_stop_length: 20
-  ma_stop_ticks: 15          # 夜盤從 10 提高至 15
-  ma_stop_multiplier: 1.0
+  ma_stop:
+    type: "below"
+    length: 20
+    ticks: 15
+    multiplier: 1.0
 
-  # 固定停損 (夜盤放寬)
-  stop_loss_pts: 80          # 夜盤從 50 提高至 80
-  break_even_pts: 50         # 夜盤提高
-  exit_on_vwap: false        # 禁用 VWAP
+  stop_loss_pts: 60          # 【優化】回測最佳
+  break_even_pts: 50
+  exit_on_vwap: false
 
-  # 移動停損
-  trailing_stop_enabled: true
-  trailing_stop_trigger_pts: 50    # 夜盤提高
-  trailing_stop_distance_pts: 25   # 夜盤提高
+  trailing_stop:
+    enabled: true
+    trigger_pts: 60          # 【優化】統一與日盤相同
+    distance_pts: 30
 
-  # 時間過濾 (夜盤專屬)
-  time_filter_enabled: true
-  skip_hours: []             # 夜盤不跳過
-  max_holding_time_mins: 120 # 夜盤最長持倉 2 小時
+  time_filter:
+    enabled: true
+    skip_hours: []
+    max_holding_mins: 120
 
 # 4. TSM 數據配置
 tsm_config:
@@ -76,25 +74,36 @@ tsm_config:
   ticker: "TSM"
   period: "5d"
   interval: "5m"
-  min_confidence: 0.6        # 最低信心度
-  check_correlation: true    # 檢查相關性
+  min_confidence: 0.7
+  check_correlation: true
 
-# 5. 回測執行與交易成本模型
+# 5. 執行與訂單類型 【重點優化】
 execution:
-  order_type: "market"
+  # 【優化】改用範圍市場單，減少夜盤滑價
+  order_type: "range_market"
+  
   tick_size: 1.0
-  market_slippage_pts: 2.0   # 夜盤滑價較大
-  limit_offset_pts: 2.0
-  range_protection_pts: 5.0
+  
+  # 夜盤滑價設定
+  market_slippage_pts: 3.0   # 【優化】夜盤波動大，提高滑價
+  
+  # 範圍市場單保護
+  range_protection_pts: 5.0  # 價格保護範圍
+  
+  # 限價單設定 (如果使用 limit)
+  limit_offset_pts: 2.0      # 掛單偏移
+  
+  # 交易成本
   broker_fee_per_side: 20.0
   exchange_fee_per_side: 0.0
   tax_rate: 0.00002
   initial_balance: 100000
 
-# 6. 實時監控與輪詢設定
+# 6. 監控設定
 monitoring:
   data_mode: "hybrid"
-  poll_interval_secs: 60     # 夜盤放慢輪詢
+  poll_interval_secs: 30     # 【優化】加快輪詢
+  
   pb_confirmation_bars: 12
   
   callback:
