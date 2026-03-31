@@ -99,7 +99,10 @@
       "Bash(0)",
       "Bash(insert_pos *)",
       "Bash('def load_config():')",
-      "Bash(else:)"
+      "Bash(else:)",
+      "Bash(latest *)",
+      "Bash(old_can_short *)",
+      "Bash(new_can_short *)"
     ]
   },
   "$version": 3

@@ -23,7 +23,7 @@ console = Console()
 # ========== 趨勢突破策略整合 ==========
 
 def check_trend_breakout_signal(df_5m: pd.DataFrame, df_15m: pd.DataFrame) -> dict:
-    from src.squeeze_futures.engine.trend_breakout import check_trend_breakout
+    from squeeze_futures.engine.trend_breakout import check_trend_breakout
     
     result = {'trend_long': False, 'trend_short': False, 'reasons': []}
     
@@ -567,7 +567,7 @@ def check_trend_breakout_signal(df_5m: pd.DataFrame, df_15m: pd.DataFrame) -> di
     - MA20 斜率 < -0.1%
     - Squeeze 信號符合
     """
-    from src.squeeze_futures.engine.trend_breakout import check_trend_breakout
+    from squeeze_futures.engine.trend_breakout import check_trend_breakout
     
     result = {
         'trend_long': False,
