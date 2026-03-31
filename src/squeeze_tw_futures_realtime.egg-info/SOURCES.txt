@@ -20,6 +20,7 @@ src/squeeze_futures/engine/data.py
 src/squeeze_futures/engine/execution.py
 src/squeeze_futures/engine/indicators.py
 src/squeeze_futures/engine/simulator.py
+src/squeeze_futures/engine/trend_breakout.py
 src/squeeze_futures/engine/vectorized.py
 src/squeeze_futures/engine/vectorized_backtest.py
 src/squeeze_futures/export/__init__.py

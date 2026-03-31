@@ -1,99 +1,61 @@
-# 🚀 Squeeze Taiwan Futures Auto-Trader Configuration
-
-# 實戰總開關
+execution:
+  broker_fee_per_side: 20.0
+  exchange_fee_per_side: 0.0
+  initial_balance: 100000
+  limit_offset_pts: 2.0
+  market_slippage_pts: 1.0
+  order_type: market
+  range_protection_pts: 3.0
+  tax_rate: 2.0e-05
+  tick_size: 1.0
 live_trading: false
-
-# 1. 策略核心參數
+monitoring:
+  callback:
+    buffer_size: 100
+    health_check_secs: 60
+    use_tick_data: false
+  data_mode: hybrid
+  pb_confirmation_bars: 12
+  poll_interval_secs: 30
+risk_mgmt:
+  atr_length: 14
+  atr_multiplier: 0.0
+  break_even_pts: 50
+  exit_on_vwap: false
+  ma_stop_length: 20
+  ma_stop_multiplier: 1.0
+  ma_stop_ticks: 10
+  ma_stop_type: below
+  skip_hours:
+  - 21
+  - 22
+  stop_loss_pts: 60
+  time_filter_enabled: true
+  trailing_stop_distance_pts: 30
+  trailing_stop_enabled: true
+  trailing_stop_trigger_pts: 60
 strategy:
+  entry_score: 20
   length: 20
-  entry_score: 10            # 【調整】從 15 降至 10，進一步增加進場機會
-  use_squeeze: true
-  use_pullback: true
-  regime_filter: "loose"     # 放寬趨勢過濾
-
+  partial_exit:
+    enabled: true
+    tp1_lots: 1
+    tp1_pts: 50
   pullback:
+    buffer: 1.002
     ema_fast: 20
     ema_slow: 60
     lookback: 60
-    buffer: 1.002
-
-  # 🚀 分批停利策略 (Partial Exit)
-  partial_exit:
-    enabled: true
-    tp1_pts: 30              # 【調整】從 40 降至 30
-    tp1_lots: 1
-
+  regime_filter: mid
+  use_pullback: true
+  use_squeeze: true
   weights:
-    "1h": 0.2
-    "15m": 0.4
-    "5m": 0.4
-
-# 2. 部位管理
+    15m: 0.4
+    1h: 0.2
+    5m: 0.4
 trade_mgmt:
-  lots_per_trade: 2    # 進場直接 2 口
-  max_positions: 2
   allow_long: true
   allow_short: true
   force_close_at_end: false
-
-# 3. 風險控管
-risk_mgmt:
-  # --- MA 動態停損（主停損）---
-  # 回測結果（2026-03-29）：
-  #   - MA20-5tick: +95,352 TWD, 勝率 43.7%, MDD 8,471, PF 2.04 ✅ 最佳
-  #   - MA20-10tick: +90,178 TWD, 勝率 43.7%, MDD 9,307, PF 1.93
-  #   - 固定 30 點：+71,356 TWD, 勝率 44.0%, MDD 15,042, PF 1.62
-  ma_stop_type: "below"        # "below"=MA 下方/上方固定 tick 數
-  ma_stop_length: 20           # MA20 最佳
-  ma_stop_ticks: 10            # 【改進】從 5 提高至 10，避免夜盤震盪
-  ma_stop_multiplier: 1.0      # 啟用 MA 停損
-
-  # --- 固定停損（備援）---
-  stop_loss_pts: 50            # 【改進】從 30 提高至 50，避免夜盤震盪出局
-  break_even_pts: 40           # 【改進】從 30 提高至 40
-  exit_on_vwap: false          # 【改進】禁用 VWAP 離場 (夜盤持續虧損)
-
-  # --- ATR 動態停損 ---
-  # 回測結果：ATR 0.1x 以上全部虧損，建議停用
-  atr_length: 14
-  atr_multiplier: 0.0          # 停用 ATR 停損
-
-  # --- 移動停損 (Trailing Stop) ---
-  # 【新增】保護未實現獲利
-  trailing_stop_enabled: true
-  trailing_stop_trigger_pts: 30    # 獲利達 30 點啟動移動停損
-  trailing_stop_distance_pts: 15   # 移動停損距離 15 點
-
-  # --- 時間過濾 ---
-  # 【新增】避開高波動時段
-  time_filter_enabled: true
-  skip_hours: [21, 22]             # 避開 21:00-23:00 夜盤高波動
-
-# 4. 回測執行與交易成本模型
-execution:
-  order_type: "market"        # market | limit | range_market
-  tick_size: 1.0
-  market_slippage_pts: 1.0
-  limit_offset_pts: 2.0
-  range_protection_pts: 3.0
-  broker_fee_per_side: 20.0   # 依券商實際手續費調整
-  exchange_fee_per_side: 0.0  # 若已含在券商手續費，可維持 0
-  tax_rate: 0.00002           # 台灣股價指數期貨稅率，TMF 使用此假設
-  initial_balance: 100000     # 初始帳戶餘額
-
-# 5. 實時監控與輪詢設定
-monitoring:
-  # 數據模式選擇：
-  #   - "polling": 傳統輪詢模式（穩定，每 poll_interval_secs 秒查詢一次）
-  #   - "callback": 使用 shioaji callback 接收即時數據（即時性高）
-  #   - "hybrid": 混合模式（推薦）- callback 即時觸發 + polling 定期校準
-  data_mode: "hybrid"
-  
-  poll_interval_secs: 30      # 輪詢間隔（秒）- polling/hybrid 模式使用
-  pb_confirmation_bars: 12    # 高點/低點確認週期（K 棒數量）
-  
-  # Callback 模式設定
-  callback:
-    use_tick_data: false      # 是否使用 tick 數據（true=即時 tick, false=K 棒更新）
-    buffer_size: 100          # K 棒緩衝大小
-    health_check_secs: 60     # 健康檢查間隔（秒）
+  lots_per_trade: 1
+  max_positions: 1
