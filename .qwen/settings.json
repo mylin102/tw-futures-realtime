@@ -32,7 +32,10 @@
       "Bash(crontab *)",
       "Bash(timeout *)",
       "Bash(true)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(lsof *)",
+      "Bash(netstat *)",
+      "Bash(xargs *)"
     ]
   },
   "$version": 3
