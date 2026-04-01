@@ -191,7 +191,10 @@ def run_simulation(ticker="TMF"):
             exit_reason=exit_reason,
         )
         
-        # 🚀 發送交易通知（僅 LIVE 模式）
+        # 🚀 發送交易通知（LIVE: email, PAPER: console）
+        if result:
+            direction = "🟢 BUY" if signal == "BUY" else "🔴 SELL" if signal == "SELL" else "⚪ EXIT"
+            console.print(f"[bold green][{ts}] {direction} {lots} lots @ {price:.0f}  {result}[/bold green]")
         if live_ready and result:
             direction = "🟢 BUY" if signal == "BUY" else "🔴 SELL" if signal == "SELL" else "⚪ EXIT"
             pnl_text = ""
